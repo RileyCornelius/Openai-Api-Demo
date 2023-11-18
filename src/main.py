@@ -9,25 +9,11 @@ import cv2
 import gradio as gr
 import numpy as np
 import requests
+
+# from transformers import pipeline
 from typing_extensions import Literal
 from openai import OpenAI
 from dotenv import load_dotenv
-
-
-MARKDOWN = """
-# WebcamGPT 💬 + 📸
-
-webcamGPT is a tool that allows you to chat with video using OpenAI Vision API.
-
-Visit [awesome-openai-vision-api-experiments](https://github.com/roboflow/awesome-openai-vision-api-experiments) 
-repository to find more OpenAI Vision API experiments or contribute your own.
-"""
-AVATARS = (
-    "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
-    "https://media.roboflow.com/spaces/openai-white-logomark.png",
-)
-IMAGE_CACHE_DIRECTORY = "data"
-API_URL = "https://api.openai.com/v1/chat/completions"
 
 
 def get_openai_key() -> str:
@@ -82,6 +68,7 @@ def compose_headers(api_key: str) -> dict:
 
 
 def prompt_image(api_key: str, image: np.ndarray, prompt: str) -> str:
+    API_URL = "https://api.openai.com/v1/chat/completions"
     headers = compose_headers(api_key=api_key)
     payload = compose_payload(image=image, prompt=prompt)
     response = requests.post(url=API_URL, headers=headers, json=payload).json()
@@ -124,9 +111,7 @@ def generate_image(
         )
     except Exception as error:
         print(str(error))
-        raise gr.Error(
-            "An error occurred while generating speech. Please check your API key and come back try again."
-        )
+        raise gr.Error("An error occurred while generating speech. Please check your API key and come back try again.")
 
     return response.data[0].url
 
@@ -156,9 +141,7 @@ def text_to_speech(
 
     except Exception as error:
         print(str(error))
-        raise gr.Error(
-            "An error occurred while generating speech. Please check your API key and come back try again."
-        )
+        raise gr.Error("An error occurred while generating speech. Please check your API key and come back try again.")
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
         temp_file.write(response.content)
@@ -168,19 +151,22 @@ def text_to_speech(
     return temp_file_path
 
 
+def transcript_audio(audio):
+    transcriptions = transcript(audio, "whisper-1", "text")
+    return transcriptions
+
+
 def transcript(audio, model, response_type):
     try:
         client = OpenAI(api_key=openai_key)
-        print(audio)
+        # print(audio)
         audio_file = open(audio, "rb")
         transcriptions = client.audio.transcriptions.create(
             model=model, file=audio_file, response_format=response_type
         )
     except Exception as error:
         print(str(error))
-        raise gr.Error(
-            "An error occurred while generating speech. Please check your API key and come back try again."
-        )
+        raise gr.Error("An error occurred while generating speech. Please check your API key and come back try again.")
 
     return transcriptions
 
@@ -188,54 +174,41 @@ def transcript(audio, model, response_type):
 def gui():
     with gr.Blocks() as gradio:
         with gr.Tab(label="Chat with Vision"):
-            # gr.Markdown("# <center> Chat </center>")
+            gr.Markdown("# <center> Chat with Vision </center>")
             with gr.Column():
-                gr.Markdown(MARKDOWN)
                 with gr.Row():
-                    vision_on = gr.Checkbox(label="Vision On")
-                    tts_on = gr.Checkbox(label="Text to Speech On")
-                    # audio_recording = gr.Audio(sources=["microphone"], type="filepath")
-                    model = gr.Dropdown(
-                        choices=["whisper-1"], label="Model", value="whisper-1"
-                    )
-                    response_type = gr.Dropdown(
-                        choices=["json", "text", "srt", "verbose_json", "vtt"],
-                        label="Response Type",
-                        value="text",
-                    )
-
-                with gr.Row():
-                    preview_webcam = gr.Image(
-                        sources=["webcam"]
-                    )  # Fix uploading flicker
+                    webcam = gr.Image(source="webcam", streaming=True)  # Fix uploading flicker
                     with gr.Column():
-                        chatbot = gr.Chatbot(
-                            height=500, bubble_full_width=False, avatar_images=AVATARS
+                        AVATARS = (
+                            "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
+                            "https://media.roboflow.com/spaces/openai-white-logomark.png",
                         )
-                        message_textbox = gr.Textbox()
-                        audio = gr.Audio(sources=["microphone"], type="filepath")
+                        chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
+                        message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+                        audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+                        audio_output = gr.Audio(label="Audio Output", autoplay=True)
                         clear_button = gr.ClearButton([message_textbox, chatbot])
 
-            webcam = gr.Image(sources=["webcam"], streaming=True, visible=False)
-            audio_player = gr.Audio(visible=False)
-
-            audio.stop_recording(
-                fn=transcript,
-                inputs=[audio, model, response_type],
+            audio_input.stop_recording(
+                fn=transcript_audio,
+                inputs=[audio_input],
                 outputs=[message_textbox],
-            )
+            ).then(
+                fn=respond,
+                inputs=[webcam, message_textbox, chatbot],
+                outputs=[message_textbox, chatbot],
+            ).then(chatbot_speech, inputs=[chatbot], outputs=[audio_output])
+
             message_textbox.submit(
                 fn=respond,
                 inputs=[webcam, message_textbox, chatbot],
                 outputs=[message_textbox, chatbot],
-            ).then(chatbot_speech, inputs=[chatbot], outputs=[audio])
+            ).then(chatbot_speech, inputs=[chatbot], outputs=[audio_output])
 
         with gr.Tab(label="Text to Speech"):
             gr.Markdown("# <center> Text to Speech </center>")
             with gr.Row(variant="panel"):
-                model = gr.Dropdown(
-                    choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1"
-                )
+                model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
                 voice = gr.Dropdown(
                     choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
                     label="Voice Options",
@@ -246,9 +219,7 @@ def gui():
                     label="Output Options",
                     value="mp3",
                 )
-                speed = gr.Slider(
-                    minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed"
-                )
+                speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
 
             text = gr.Textbox(
                 label="Input text",
@@ -271,15 +242,38 @@ def gui():
                 api_name=False,
             )
 
+        with gr.Tab(label="Speech to Text"):
+            gr.Markdown("# <center> Speech to Text </center>")
+            with gr.Row(variant="panel"):
+                model = gr.Dropdown(choices=["whisper-1"], label="Model", value="whisper-1")
+                response_type = gr.Dropdown(
+                    choices=["json", "text", "srt", "verbose_json", "vtt"],
+                    label="Response Type",
+                    value="text",
+                )
+
+            with gr.Row():
+                audio_input = gr.Audio(source="microphone", type="filepath")
+                file = gr.UploadButton(
+                    file_types=[".mp3", ".wav"],
+                    label="Select File",
+                    type="filepath",
+                )
+
+            output_text = gr.Text(label="Output Text")
+
+            audio_input.stop_recording(
+                fn=transcript,
+                inputs=[audio_input, model, response_type],
+                outputs=output_text,
+            )
+            file.upload(fn=transcript, inputs=[file, model, response_type], outputs=output_text)
+
         with gr.Tab(label="Image Generation"):
             gr.Markdown("# <center> Image Generation </center>")
             with gr.Row(variant="panel"):
-                model = gr.Dropdown(
-                    choices=["dall-e-2", "dall-e-3"], label="Model", value="dall-e-3"
-                )
-                quality = gr.Dropdown(
-                    choices=["standard", "hd"], label="Quality", value="standard"
-                )
+                model = gr.Dropdown(choices=["dall-e-2", "dall-e-3"], label="Model", value="dall-e-3")
+                quality = gr.Dropdown(choices=["standard", "hd"], label="Quality", value="standard")
                 size = gr.Dropdown(
                     choices=["1024x1024", "1792x1024", "1024x1792"],
                     label="Size",
@@ -305,36 +299,6 @@ def gui():
                 inputs=[text, model, quality, size],
                 outputs=output_image,
                 api_name=False,
-            )
-        with gr.Tab(label="Speech to Text"):
-            gr.Markdown("# <center> Speech to Text </center>")
-            with gr.Row(variant="panel"):
-                model = gr.Dropdown(
-                    choices=["whisper-1"], label="Model", value="whisper-1"
-                )
-                response_type = gr.Dropdown(
-                    choices=["json", "text", "srt", "verbose_json", "vtt"],
-                    label="Response Type",
-                    value="text",
-                )
-
-            with gr.Row():
-                audio = gr.Audio(sources=["microphone"], type="filepath")
-                file = gr.UploadButton(
-                    file_types=[".mp3", ".wav"],
-                    label="Select File",
-                    type="filepath",
-                )
-
-            output_text = gr.Text(label="Output Text")
-
-            audio.stop_recording(
-                fn=transcript,
-                inputs=[audio, model, response_type],
-                outputs=output_text,
-            )
-            file.upload(
-                fn=transcript, inputs=[file, model, response_type], outputs=output_text
             )
 
     gradio.launch()

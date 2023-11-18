@@ -13,6 +13,9 @@
 1. Rename `.env.example` to `.env`
 2. Enter your openai api key in `.env`
 
+### Install ffmpeg
+1. Follow the [tutorial](https://phoenixnap.com/kb/ffmpeg-windows) here
+
 ## Run
 1. Run `main.py` with `python src/main.py`
-2. `ctrl + click` on [http://127.0.0.1:7860](http://127.0.0.1:7860) in the terminal
+2. `ctrl + click` on [http://127.0.0.1:7860](http://127.0.0.1:7860) in the terminal to open the web gui
