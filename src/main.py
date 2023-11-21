@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import gradio as gr
 import tempfile
 import base64
@@ -67,6 +68,32 @@ def compose_headers(api_key: str) -> dict:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
 
 
+def wait_on_run(run, thread):
+    while run.status == "queued" or run.status == "in_progress":
+        run = client.beta.threads.runs.retrieve(
+            thread_id=thread.id,
+            run_id=run.id,
+        )
+        time.sleep(0.5)
+    return run
+
+
+def prompt(text: str) -> str:
+    BAXTER_ASSISTANT_ID = "asst_IO7ySDCqFNGz7yuZrov8WLsX"
+    client.beta.threads.messages.create(thread_id=thread.id, role="user", content=text)
+    run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=BAXTER_ASSISTANT_ID)
+    wait_on_run(run, thread)
+    messages = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
+    latest_message = messages.data[-1].content[0].text.value
+    return latest_message
+
+
+def respond(text: str, chat_history) -> str:
+    message = prompt(text)
+    chat_history.append((text, message))
+    return "", chat_history
+
+
 def prompt_image(api_key: str, image: np.ndarray, prompt: str) -> str:
     API_URL = "https://api.openai.com/v1/chat/completions"
     headers = compose_headers(api_key=api_key)
@@ -80,12 +107,12 @@ def prompt_image(api_key: str, image: np.ndarray, prompt: str) -> str:
 
 def cache_image(image: np.ndarray) -> str:
     with tempfile.NamedTemporaryFile(suffix=".jpeg", delete=False) as temp_file:
-        image_filename = temp_file.name
-        cv2.imwrite(image_filename, image)
-    return image_filename
+        image_file_name = temp_file.name
+        cv2.imwrite(image_file_name, image)
+    return image_file_name
 
 
-def respond(image: np.ndarray, prompt: str, chat_history):
+def respond_with_vision(image: np.ndarray, prompt: str, chat_history):
     image = preprocess_image(image=image)
     cached_image_path = cache_image(image)
     response = prompt_image(api_key=openai_key, image=image, prompt=prompt)
@@ -116,9 +143,15 @@ def generate_image(
     return response.data[0].url
 
 
-def chatbot_speech(chatbot):
+def chatbot_to_speech(
+    chatbot: gr.Chatbot,
+    model: Literal["tts-1", "tts-1-hd"],
+    voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+    output_file_format: Literal["mp3", "opus", "aac", "flac", ""] = "",
+    speed: float = 1.0,
+):
     text = chatbot[-1][-1]
-    audio = text_to_speech(text, "tts-1", "onyx", "mp3", 1.0)
+    audio = text_to_speech(text, model, voice, output_file_format, speed)
     return audio
 
 
@@ -173,6 +206,23 @@ def transcript(audio, model, response_type):
 
 def gui():
     with gr.Blocks() as gradio:
+        with gr.Tab(label="Chat"):
+            gr.Markdown("# <center> Chat </center>")
+            with gr.Column():
+                AVATARS = (
+                    "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
+                    "https://media.roboflow.com/spaces/openai-white-logomark.png",
+                )
+                chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
+                message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+                clear_button = gr.ClearButton([message_textbox, chatbot])
+
+        message_textbox.submit(
+            fn=respond,
+            inputs=[message_textbox, chatbot],
+            outputs=[message_textbox, chatbot],
+        )
+
         with gr.Tab(label="Chat with Vision"):
             gr.Markdown("# <center> Chat with Vision </center>")
             with gr.Column():
@@ -189,21 +239,35 @@ def gui():
                         audio_output = gr.Audio(label="Audio Output", autoplay=True)
                         clear_button = gr.ClearButton([message_textbox, chatbot])
 
-            audio_input.stop_recording(
-                fn=transcript_audio,
-                inputs=[audio_input],
-                outputs=[message_textbox],
-            ).then(
-                fn=respond,
-                inputs=[webcam, message_textbox, chatbot],
-                outputs=[message_textbox, chatbot],
-            ).then(chatbot_speech, inputs=[chatbot], outputs=[audio_output])
+                with gr.Row():
+                    model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
+                    voice = gr.Dropdown(
+                        choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+                        label="Voice Options",
+                        value="alloy",
+                    )
+                    output_file_format = gr.Dropdown(
+                        choices=["mp3", "opus", "aac", "flac"],
+                        label="Output Options",
+                        value="mp3",
+                    )
+                    speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
 
-            message_textbox.submit(
-                fn=respond,
-                inputs=[webcam, message_textbox, chatbot],
-                outputs=[message_textbox, chatbot],
-            ).then(chatbot_speech, inputs=[chatbot], outputs=[audio_output])
+        audio_input.stop_recording(
+            fn=transcript_audio,
+            inputs=[audio_input],
+            outputs=[message_textbox],
+        ).then(
+            fn=respond_with_vision,
+            inputs=[webcam, message_textbox, chatbot],
+            outputs=[message_textbox, chatbot],
+        ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
+
+        message_textbox.submit(
+            fn=respond_with_vision,
+            inputs=[webcam, message_textbox, chatbot],
+            outputs=[message_textbox, chatbot],
+        ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
 
         with gr.Tab(label="Text to Speech"):
             gr.Markdown("# <center> Text to Speech </center>")
@@ -229,17 +293,15 @@ def gui():
             btn = gr.Button("Text-To-Speech")
             output_audio = gr.Audio(label="Speech Output", autoplay=True)
 
-            text.submit(
-                fn=text_to_speech,
-                inputs=[text, model, voice, output_file_format, speed],
-                outputs=output_audio,
-                api_name="text_to_speech",
-            )
             btn.click(
                 fn=text_to_speech,
                 inputs=[text, model, voice, output_file_format, speed],
                 outputs=output_audio,
-                api_name=False,
+            )
+            text.submit(
+                fn=text_to_speech,
+                inputs=[text, model, voice, output_file_format, speed],
+                outputs=output_audio,
             )
 
         with gr.Tab(label="Speech to Text"):
@@ -306,4 +368,6 @@ def gui():
 
 if __name__ == "__main__":
     openai_key = get_openai_key()  # global api key
+    client = OpenAI(api_key=openai_key)
+    thread = client.beta.threads.create()
     gui()
