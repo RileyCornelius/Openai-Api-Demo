@@ -10,8 +10,6 @@ import cv2
 import gradio as gr
 import numpy as np
 import requests
-
-# from transformers import pipeline
 from typing_extensions import Literal
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -204,10 +202,34 @@ def transcript(audio, model, response_type):
     return transcriptions
 
 
-def gui():
-    with gr.Blocks() as gradio:
-        with gr.Tab(label="Chat"):
-            gr.Markdown("# <center> Chat </center>")
+##############################################################################################################
+# UI
+##############################################################################################################
+
+
+def chat_tab():
+    gr.Markdown("# <center> Chat </center>")
+    with gr.Column():
+        AVATARS = (
+            "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
+            "https://media.roboflow.com/spaces/openai-white-logomark.png",
+        )
+        chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
+        message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+        clear_button = gr.ClearButton([message_textbox, chatbot])
+
+    message_textbox.submit(
+        fn=respond,
+        inputs=[message_textbox, chatbot],
+        outputs=[message_textbox, chatbot],
+    )
+
+
+def chat_with_vision_tab():
+    gr.Markdown("# <center> Chat with Vision </center>")
+    with gr.Column():
+        with gr.Row():
+            webcam = gr.Image(source="webcam", streaming=True)  # Fix uploading flicker
             with gr.Column():
                 AVATARS = (
                     "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
@@ -215,153 +237,147 @@ def gui():
                 )
                 chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
                 message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+                audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+                audio_output = gr.Audio(label="Audio Output", autoplay=True)
                 clear_button = gr.ClearButton([message_textbox, chatbot])
 
-        message_textbox.submit(
-            fn=respond,
-            inputs=[message_textbox, chatbot],
-            outputs=[message_textbox, chatbot],
+        with gr.Row():
+            model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
+            voice = gr.Dropdown(
+                choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+                label="Voice Options",
+                value="alloy",
+            )
+            output_file_format = gr.Dropdown(
+                choices=["mp3", "opus", "aac", "flac"],
+                label="Output Options",
+                value="mp3",
+            )
+            speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
+
+    audio_input.stop_recording(
+        fn=transcript_audio,
+        inputs=[audio_input],
+        outputs=[message_textbox],
+    ).then(
+        fn=respond_with_vision,
+        inputs=[webcam, message_textbox, chatbot],
+        outputs=[message_textbox, chatbot],
+    ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
+
+    message_textbox.submit(
+        fn=respond_with_vision,
+        inputs=[webcam, message_textbox, chatbot],
+        outputs=[message_textbox, chatbot],
+    ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
+
+
+def text_to_speech_tab():
+    gr.Markdown("# <center> Text to Speech </center>")
+    with gr.Row(variant="panel"):
+        model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
+        voice = gr.Dropdown(
+            choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            label="Voice Options",
+            value="alloy",
+        )
+        output_file_format = gr.Dropdown(
+            choices=["mp3", "opus", "aac", "flac"],
+            label="Output Options",
+            value="mp3",
+        )
+        speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
+
+    text = gr.Textbox(
+        label="Input text",
+        placeholder='Enter your text and then click on the "Text-To-Speech" button, ' "or simply press the Enter key.",
+    )
+    btn = gr.Button("Text-To-Speech")
+    output_audio = gr.Audio(label="Speech Output", autoplay=True)
+
+    btn.click(
+        fn=text_to_speech,
+        inputs=[text, model, voice, output_file_format, speed],
+        outputs=output_audio,
+    )
+    text.submit(
+        fn=text_to_speech,
+        inputs=[text, model, voice, output_file_format, speed],
+        outputs=output_audio,
+    )
+
+
+def speech_to_text_tab():
+    gr.Markdown("# <center> Speech to Text </center>")
+    with gr.Row(variant="panel"):
+        model = gr.Dropdown(choices=["whisper-1"], label="Model", value="whisper-1")
+        response_type = gr.Dropdown(
+            choices=["json", "text", "srt", "verbose_json", "vtt"],
+            label="Response Type",
+            value="text",
         )
 
+    with gr.Row():
+        audio_input = gr.Audio(source="microphone", type="filepath")
+        file = gr.UploadButton(
+            file_types=[".mp3", ".wav"],
+            label="Select File",
+            type="filepath",
+        )
+
+    output_text = gr.Text(label="Output Text")
+    audio_input.stop_recording(
+        fn=transcript,
+        inputs=[audio_input, model, response_type],
+        outputs=output_text,
+    )
+    file.upload(fn=transcript, inputs=[file, model, response_type], outputs=output_text)
+
+
+def image_generation_tab():
+    gr.Markdown("# <center> Image Generation </center>")
+    with gr.Row(variant="panel"):
+        model = gr.Dropdown(choices=["dall-e-2", "dall-e-3"], label="Model", value="dall-e-3")
+        quality = gr.Dropdown(choices=["standard", "hd"], label="Quality", value="standard")
+        size = gr.Dropdown(
+            choices=["1024x1024", "1792x1024", "1024x1792"],
+            label="Size",
+            value="1024x1024",
+        )
+
+    text = gr.Textbox(
+        label="Input Text",
+        placeholder='Enter your text and then click on the "Image Generate" button, ' "or simply press the Enter key.",
+    )
+    btn = gr.Button("Image Generate")
+    output_image = gr.Image(label="Image Output")
+
+    text.submit(
+        fn=generate_image,
+        inputs=[text, model, quality, size],
+        outputs=output_image,
+        api_name="generate_image",
+    )
+    btn.click(
+        fn=generate_image,
+        inputs=[text, model, quality, size],
+        outputs=output_image,
+        api_name=False,
+    )
+
+
+def ui():
+    with gr.Blocks() as gradio:
+        with gr.Tab(label="Chat"):
+            chat_tab()
         with gr.Tab(label="Chat with Vision"):
-            gr.Markdown("# <center> Chat with Vision </center>")
-            with gr.Column():
-                with gr.Row():
-                    webcam = gr.Image(source="webcam", streaming=True)  # Fix uploading flicker
-                    with gr.Column():
-                        AVATARS = (
-                            "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
-                            "https://media.roboflow.com/spaces/openai-white-logomark.png",
-                        )
-                        chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
-                        message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
-                        audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
-                        audio_output = gr.Audio(label="Audio Output", autoplay=True)
-                        clear_button = gr.ClearButton([message_textbox, chatbot])
-
-                with gr.Row():
-                    model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
-                    voice = gr.Dropdown(
-                        choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-                        label="Voice Options",
-                        value="alloy",
-                    )
-                    output_file_format = gr.Dropdown(
-                        choices=["mp3", "opus", "aac", "flac"],
-                        label="Output Options",
-                        value="mp3",
-                    )
-                    speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
-
-        audio_input.stop_recording(
-            fn=transcript_audio,
-            inputs=[audio_input],
-            outputs=[message_textbox],
-        ).then(
-            fn=respond_with_vision,
-            inputs=[webcam, message_textbox, chatbot],
-            outputs=[message_textbox, chatbot],
-        ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
-
-        message_textbox.submit(
-            fn=respond_with_vision,
-            inputs=[webcam, message_textbox, chatbot],
-            outputs=[message_textbox, chatbot],
-        ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
-
+            chat_with_vision_tab()
         with gr.Tab(label="Text to Speech"):
-            gr.Markdown("# <center> Text to Speech </center>")
-            with gr.Row(variant="panel"):
-                model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
-                voice = gr.Dropdown(
-                    choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-                    label="Voice Options",
-                    value="alloy",
-                )
-                output_file_format = gr.Dropdown(
-                    choices=["mp3", "opus", "aac", "flac"],
-                    label="Output Options",
-                    value="mp3",
-                )
-                speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
-
-            text = gr.Textbox(
-                label="Input text",
-                placeholder='Enter your text and then click on the "Text-To-Speech" button, '
-                "or simply press the Enter key.",
-            )
-            btn = gr.Button("Text-To-Speech")
-            output_audio = gr.Audio(label="Speech Output", autoplay=True)
-
-            btn.click(
-                fn=text_to_speech,
-                inputs=[text, model, voice, output_file_format, speed],
-                outputs=output_audio,
-            )
-            text.submit(
-                fn=text_to_speech,
-                inputs=[text, model, voice, output_file_format, speed],
-                outputs=output_audio,
-            )
-
+            text_to_speech_tab()
         with gr.Tab(label="Speech to Text"):
-            gr.Markdown("# <center> Speech to Text </center>")
-            with gr.Row(variant="panel"):
-                model = gr.Dropdown(choices=["whisper-1"], label="Model", value="whisper-1")
-                response_type = gr.Dropdown(
-                    choices=["json", "text", "srt", "verbose_json", "vtt"],
-                    label="Response Type",
-                    value="text",
-                )
-
-            with gr.Row():
-                audio_input = gr.Audio(source="microphone", type="filepath")
-                file = gr.UploadButton(
-                    file_types=[".mp3", ".wav"],
-                    label="Select File",
-                    type="filepath",
-                )
-
-            output_text = gr.Text(label="Output Text")
-
-            audio_input.stop_recording(
-                fn=transcript,
-                inputs=[audio_input, model, response_type],
-                outputs=output_text,
-            )
-            file.upload(fn=transcript, inputs=[file, model, response_type], outputs=output_text)
-
+            speech_to_text_tab()
         with gr.Tab(label="Image Generation"):
-            gr.Markdown("# <center> Image Generation </center>")
-            with gr.Row(variant="panel"):
-                model = gr.Dropdown(choices=["dall-e-2", "dall-e-3"], label="Model", value="dall-e-3")
-                quality = gr.Dropdown(choices=["standard", "hd"], label="Quality", value="standard")
-                size = gr.Dropdown(
-                    choices=["1024x1024", "1792x1024", "1024x1792"],
-                    label="Size",
-                    value="1024x1024",
-                )
-
-            text = gr.Textbox(
-                label="Input Text",
-                placeholder='Enter your text and then click on the "Image Generate" button, '
-                "or simply press the Enter key.",
-            )
-            btn = gr.Button("Image Generate")
-            output_image = gr.Image(label="Image Output")
-
-            text.submit(
-                fn=generate_image,
-                inputs=[text, model, quality, size],
-                outputs=output_image,
-                api_name="generate_image",
-            )
-            btn.click(
-                fn=generate_image,
-                inputs=[text, model, quality, size],
-                outputs=output_image,
-                api_name=False,
-            )
+            image_generation_tab()
 
     gradio.launch()
 
@@ -370,4 +386,4 @@ if __name__ == "__main__":
     openai_key = get_openai_key()  # global api key
     client = OpenAI(api_key=openai_key)
     thread = client.beta.threads.create()
-    gui()
+    ui()
