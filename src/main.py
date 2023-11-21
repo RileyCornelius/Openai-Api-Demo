@@ -1,18 +1,18 @@
 import os
 import sys
 import time
-import gradio as gr
 import tempfile
 import base64
 import os
 import uuid
+import requests
+from typing_extensions import Literal
+
 import cv2
 import gradio as gr
 import numpy as np
-import requests
-from typing_extensions import Literal
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
 
 
 def get_openai_key() -> str:
@@ -207,22 +207,50 @@ def transcript(audio, model, response_type):
 ##############################################################################################################
 
 
+AVATARS = (
+    "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
+    "https://media.roboflow.com/spaces/openai-white-logomark.png",
+)
+
+
 def chat_tab():
     gr.Markdown("# <center> Chat </center>")
     with gr.Column():
-        AVATARS = (
-            "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
-            "https://media.roboflow.com/spaces/openai-white-logomark.png",
-        )
         chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
         message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+        with gr.Row():
+            audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+            audio_output = gr.Audio(label="Audio Output", autoplay=True)
         clear_button = gr.ClearButton([message_textbox, chatbot])
+        with gr.Row():
+            model = gr.Dropdown(choices=["tts-1", "tts-1-hd"], label="Model", value="tts-1")
+            voice = gr.Dropdown(
+                choices=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+                label="Voice Options",
+                value="alloy",
+            )
+            output_file_format = gr.Dropdown(
+                choices=["mp3", "opus", "aac", "flac"],
+                label="Output Options",
+                value="mp3",
+            )
+            speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
 
     message_textbox.submit(
         fn=respond,
         inputs=[message_textbox, chatbot],
         outputs=[message_textbox, chatbot],
     )
+
+    audio_input.stop_recording(
+        fn=transcript_audio,
+        inputs=[audio_input],
+        outputs=[message_textbox],
+    ).then(
+        fn=respond,
+        inputs=[message_textbox, chatbot],
+        outputs=[message_textbox, chatbot],
+    ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
 
 
 def chat_with_vision_tab():
@@ -231,14 +259,11 @@ def chat_with_vision_tab():
         with gr.Row():
             webcam = gr.Image(source="webcam", streaming=True)  # Fix uploading flicker
             with gr.Column():
-                AVATARS = (
-                    "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
-                    "https://media.roboflow.com/spaces/openai-white-logomark.png",
-                )
                 chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
                 message_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
-                audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
-                audio_output = gr.Audio(label="Audio Output", autoplay=True)
+                with gr.Row():
+                    audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+                    audio_output = gr.Audio(label="Audio Output", autoplay=True)
                 clear_button = gr.ClearButton([message_textbox, chatbot])
 
         with gr.Row():
@@ -255,17 +280,17 @@ def chat_with_vision_tab():
             )
             speed = gr.Slider(minimum=0.25, maximum=4.0, value=1.0, step=0.01, label="Speed")
 
+    message_textbox.submit(
+        fn=respond_with_vision,
+        inputs=[webcam, message_textbox, chatbot],
+        outputs=[message_textbox, chatbot],
+    )
+
     audio_input.stop_recording(
         fn=transcript_audio,
         inputs=[audio_input],
         outputs=[message_textbox],
     ).then(
-        fn=respond_with_vision,
-        inputs=[webcam, message_textbox, chatbot],
-        outputs=[message_textbox, chatbot],
-    ).then(chatbot_to_speech, inputs=[chatbot, model, voice, output_file_format, speed], outputs=[audio_output])
-
-    message_textbox.submit(
         fn=respond_with_vision,
         inputs=[webcam, message_textbox, chatbot],
         outputs=[message_textbox, chatbot],
