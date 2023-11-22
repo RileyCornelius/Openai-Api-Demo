@@ -16,6 +16,11 @@
 ### Install ffmpeg
 1. Follow the [tutorial](https://phoenixnap.com/kb/ffmpeg-windows) here
 
+### Update Dependencies
+1. Press the `Terminal` dropdown
+2. Press `Run Task...`
+3. Press `Install requirements.txt`
+
 ## Run
-1. Run `main.py` with `python src/main.py`
+1. Run `main.py` with `python src/main.py` or the play button at the top right
 2. `ctrl + click` on [http://127.0.0.1:7860](http://127.0.0.1:7860) in the terminal to open the web gui
