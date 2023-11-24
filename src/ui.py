@@ -20,7 +20,9 @@ class ui:
 def chat_tab():
     gr.Markdown("# <center> Chat </center>")
     ui.chat_chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
-    ui.chat_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
+    with gr.Row():
+        ui.chat_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here", scale=3)
+        ui.chat_model = gr.Dropdown(choices=["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-1106-preview"], label="Model", value="gpt-3.5-turbo")
     with gr.Row():
         ui.chat_audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
         ui.chat_audio_output = gr.Audio(label="Audio Output", autoplay=True)
@@ -29,8 +31,8 @@ def chat_tab():
 
 def chat_tab_callbacks():
     ui.chat_textbox.submit(
-        fn=respond,
-        inputs=[ui.chat_textbox, ui.chat_chatbot],
+        fn=chatbot_response,
+        inputs=[ui.chat_textbox, ui.chat_chatbot, ui.chat_model],
         outputs=[ui.chat_textbox, ui.chat_chatbot],
     )
 
@@ -39,8 +41,8 @@ def chat_tab_callbacks():
         inputs=[ui.chat_audio_input, ui.stt_model, ui.stt_response_type],
         outputs=[ui.chat_textbox],
     ).then(
-        fn=respond,
-        inputs=[ui.chat_textbox, ui.chat_chatbot],
+        fn=chatbot_response,
+        inputs=[ui.chat_textbox, ui.chat_chatbot, ui.chat_model],
         outputs=[ui.chat_textbox, ui.chat_chatbot],
     ).then(
         chatbot_to_speech,
