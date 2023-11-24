@@ -5,15 +5,34 @@ from openai_client import *
 from openai_vision import *
 from openai_assistant import *
 
-
 AVATARS = (
     "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
     "https://media.roboflow.com/spaces/openai-white-logomark.png",
 )
 
+##########################################################################################
+# UI Functions
+##########################################################################################
 
-# stores ui elements
-class ui:
+
+def chatbot_response(prompt, chatbot, model):
+    response = chat(prompt, model)
+    chatbot.append((prompt, response))
+    return "", chatbot
+
+
+def chatbot_text_to_speech(chatbot, model, voice, output_file_format, speed):
+    text = chatbot[-1][-1]
+    audio = text_to_speech(text, model, voice, output_file_format, speed)
+    return audio
+
+
+##########################################################################################
+# UI
+##########################################################################################
+
+
+class ui:  # stores ui elements to be referenced in callbacks
     pass
 
 
@@ -45,7 +64,7 @@ def chat_tab_callbacks():
         inputs=[ui.chat_textbox, ui.chat_chatbot, ui.chat_model],
         outputs=[ui.chat_textbox, ui.chat_chatbot],
     ).then(
-        chatbot_to_speech,
+        chatbot_text_to_speech,
         inputs=[ui.chat_chatbot, ui.tts_model, ui.tts_voice, ui.tts_output_file_format, ui.tts_speed],
         outputs=[ui.chat_audio_output],
     )
@@ -80,7 +99,7 @@ def chat_with_vision_tab_callbacks():
         inputs=[ui.vision_webcam, ui.vision_textbox, ui.vision_chatbot],
         outputs=[ui.vision_textbox, ui.vision_chatbot],
     ).then(
-        fn=chatbot_to_speech,
+        fn=chatbot_text_to_speech,
         inputs=[ui.vision_chatbot, ui.tts_model, ui.tts_voice, ui.tts_output_file_format, ui.tts_speed],
         outputs=[ui.vision_audio_output],
     )

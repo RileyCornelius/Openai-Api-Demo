@@ -17,12 +17,6 @@ def set_openai_key():
         client.api_key = openai_key
 
 
-def chatbot_response(prompt, chatbot, model):
-    response = chat(prompt, model)
-    chatbot.append((prompt, response))
-    return "", chatbot
-
-
 def chat(
     prompt,
     model: Literal[
@@ -133,9 +127,3 @@ def text_to_speech(
 
     audio_path = cache_audio(response.content)
     return audio_path
-
-
-def chatbot_to_speech(chatbot, model, voice, output_file_format, speed):
-    text = chatbot[-1][-1]
-    audio = text_to_speech(text, model, voice, output_file_format, speed)
-    return audio
