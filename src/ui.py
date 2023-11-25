@@ -10,21 +10,31 @@ AVATARS = (
     "https://media.roboflow.com/spaces/openai-white-logomark.png",
 )
 
-##########################################################################################
-# UI Functions
-##########################################################################################
+
+assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
+assistant = Assistant(openai_key)
+assistant.set_assistant(assistant_id)
 
 
-def chatbot_response(prompt, chatbot, model):
+def chatbot_response(prompt, chat_history, model):
     response = chat(prompt, model)
-    chatbot.append((prompt, response))
-    return "", chatbot
+    chat_history.append((prompt, response))
+    return "", chat_history
 
 
-def chatbot_text_to_speech(chatbot, model, voice, output_file_format, speed):
-    text = chatbot[-1][-1]
+def chatbot_text_to_speech(chat_history, model, voice, output_file_format, speed):
+    text = chat_history[-1][-1]
     audio = text_to_speech(text, model, voice, output_file_format, speed)
     return audio
+
+
+def chatbot_assistant_respond(prompt, chat_history):
+    assistant.create_message(prompt)
+    assistant.create_run()
+    if assistant.wait_for_run():
+        message = assistant.get_last_message()
+        chat_history.append((prompt, message))
+    return "", chat_history
 
 
 ##########################################################################################
@@ -105,6 +115,38 @@ def chat_with_vision_tab_callbacks():
     )
 
 
+def assistant_tab():
+    gr.Markdown("# <center> Assistant </center>")
+    ui.assistant_chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=AVATARS)
+    ui.assistant_textbox = gr.Textbox(label="chatbox", placeholder="Type your message here")
+    with gr.Row():
+        ui.assistant_audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+        ui.assistant_audio_output = gr.Audio(label="Audio Output", autoplay=True)
+    ui.assistant_clear_button = gr.ClearButton([ui.assistant_textbox, ui.assistant_chatbot])
+
+
+def assistant_tab_callbacks():
+    ui.assistant_textbox.submit(
+        fn=chatbot_assistant_respond,
+        inputs=[ui.assistant_textbox, ui.assistant_chatbot],
+        outputs=[ui.assistant_textbox, ui.assistant_chatbot],
+    )
+
+    ui.assistant_audio_input.stop_recording(
+        fn=speech_to_text,
+        inputs=[ui.assistant_audio_input, ui.stt_model, ui.stt_response_type],
+        outputs=[ui.assistant_textbox],
+    ).then(
+        fn=chatbot_assistant_respond,
+        inputs=[ui.assistant_textbox, ui.assistant_chatbot],
+        outputs=[ui.assistant_textbox, ui.assistant_chatbot],
+    ).then(
+        chatbot_text_to_speech,
+        inputs=[ui.assistant_chatbot, ui.tts_model, ui.tts_voice, ui.tts_output_file_format, ui.tts_speed],
+        outputs=[ui.assistant_audio_output],
+    )
+
+
 def text_to_speech_tab():
     gr.Markdown("# <center> Text to Speech </center>")
     with gr.Row(variant="panel"):
@@ -158,6 +200,7 @@ def image_generation_tab():
         ui.image_model = gr.Dropdown(choices=["dall-e-2", "dall-e-3"], label="Model", value="dall-e-3")
         ui.image_quality = gr.Dropdown(choices=["standard", "hd"], label="Quality", value="standard")
         ui.image_size = gr.Dropdown(choices=["1024x1024", "1792x1024", "1024x1792"], label="Size", value="1024x1024")
+        ui.image_style = gr.Dropdown(choices=["vivid", "natural"], label="Style", value="vivid")
 
     ui.image_textbox = gr.Textbox(label="Input Text", placeholder='Enter your text and then click on the "Image Generate" button, or press the Enter key.')
     ui.image_button = gr.Button("Image Generate")
@@ -167,13 +210,13 @@ def image_generation_tab():
 def image_generation_tab_callbacks():
     ui.image_textbox.submit(
         fn=generate_image,
-        inputs=[ui.image_textbox, ui.image_model, ui.image_quality, ui.image_size],
+        inputs=[ui.image_textbox, ui.image_model, ui.image_quality, ui.image_size, ui.image_style],
         outputs=ui.image_output_image,
     )
 
     ui.image_button.click(
         fn=generate_image,
-        inputs=[ui.image_textbox, ui.image_model, ui.image_quality, ui.image_size],
+        inputs=[ui.image_textbox, ui.image_model, ui.image_quality, ui.image_size, ui.image_style],
         outputs=ui.image_output_image,
     )
 
@@ -184,6 +227,8 @@ def create_ui():
             chat_tab()
         with gr.Tab(label="Chat with Vision"):
             chat_with_vision_tab()
+        with gr.Tab(label="Assistant"):
+            assistant_tab()
         with gr.Tab(label="Text to Speech"):
             text_to_speech_tab()
         with gr.Tab(label="Speech to Text"):
@@ -193,8 +238,13 @@ def create_ui():
 
         chat_tab_callbacks()
         chat_with_vision_tab_callbacks()
+        assistant_tab_callbacks()
         text_to_speech_tab_callbacks()
         speech_to_text_tab_callbacks()
         image_generation_tab_callbacks()
 
     gradio.launch()
+
+
+if __name__ == "__main__":
+    create_ui()
