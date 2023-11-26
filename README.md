@@ -12,6 +12,7 @@
 ### Openai API Key
 1. Rename `.env.example` to `.env`
 2. Enter your openai api key in `.env`
+3. If using assistant enter a openai assistant id in `.env`
 
 ### Install ffmpeg
 1. Follow the [tutorial](https://phoenixnap.com/kb/ffmpeg-windows) here

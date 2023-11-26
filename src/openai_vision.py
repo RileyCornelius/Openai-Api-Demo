@@ -1,15 +1,10 @@
-import os
-import tempfile
 import base64
-import uuid
 import requests
 
 import cv2
 import numpy as np
 from typing_extensions import Literal
 from openai import OpenAI
-
-from openai_client import openai_key
 from utils import *
 
 
@@ -56,12 +51,3 @@ def prompt_image(api_key: str, image: np.ndarray, prompt: str) -> str:
     if "error" in response:
         raise ValueError(response["error"]["message"])
     return response["choices"][0]["message"]["content"]
-
-
-def respond_with_vision(image: np.ndarray, prompt: str, chat_history):
-    image = preprocess_image(image=image)
-    image_path = cache_image(image)
-    response = prompt_image(api_key=openai_key, image=image, prompt=prompt)
-    chat_history.append(((image_path, None), None))
-    chat_history.append((prompt, response))
-    return "", chat_history

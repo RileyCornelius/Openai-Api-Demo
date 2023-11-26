@@ -1,23 +1,16 @@
-import os
-
 from typing_extensions import Literal
-from dotenv import load_dotenv
 from openai import OpenAI
 
 from utils import *
 
-load_dotenv()
-openai_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=openai_key)
 
-
-def chat(prompt, model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo") -> str:
+def chat(client: OpenAI, prompt: str, model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo") -> str:
     completion = client.chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}])
     response = completion.choices[0].message.content
     return response
 
 
-def chat_stream(prompt, model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo"):
+def chat_stream(client: OpenAI, prompt: str, model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo"):
     stream = client.chat.completions.create(stream=True, model=model, messages=[{"role": "user", "content": prompt}])
     return stream
 
@@ -29,7 +22,8 @@ def print_chat_stream(stream):
 
 
 def speech_to_text(
-    audio,
+    client: OpenAI,
+    audio: str,
     model: Literal["whisper-1"] = "whisper-1",
     response_type: Literal["json", "text", "srt", "verbose_json", "vtt"] = "text",
 ) -> str:
@@ -38,11 +32,12 @@ def speech_to_text(
         transcription = client.audio.transcriptions.create(model=model, file=audio_file, response_format=response_type)
         return transcription
     except Exception as error:
-        print(f"Speech to text error: {error.code}")
+        print(f"Speech to text error: {error}")
         return ""
 
 
 def text_to_speech(
+    client: OpenAI,
     text: str,
     model: Literal["tts-1", "tts-1-hd"] = "tts-1-hd",
     voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = "alloy",
@@ -51,14 +46,16 @@ def text_to_speech(
 ) -> str:
     try:
         response = client.audio.speech.create(input=text, model=model, voice=voice, response_format=output_file_format, speed=speed)
+        # Assuming 'cache_audio' is a function defined elsewhere that saves the audio content and returns the file path.
         audio_path = cache_audio(response.content)
         return audio_path
     except Exception as error:
-        print(f"Text to speech error: {error.code}")
+        print(f"Text to speech error: {error}")
         return ""
 
 
 def generate_image(
+    client: OpenAI,
     prompt: str,
     model: Literal["dall-e-2", "dall-e-3"] = "dall-e-3",
     quality: Literal["standard", "hd"] = "hd",
@@ -70,5 +67,5 @@ def generate_image(
         url = response.data[0].url
         return url
     except Exception as error:
-        print(f"Dall-e error:  {error.code}")
+        print(f"Dall-e error: {error}")
         return ""
