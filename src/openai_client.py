@@ -1,12 +1,54 @@
-from typing_extensions import Literal
+from typing_extensions import Union, Literal
 from openai import OpenAI
 
 from utils import *
 
 
-def chat(client: OpenAI, prompt: str, model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo") -> str:
-    completion = client.chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}])
+class Messages:
+    def __init__(self, system_prompt: str = None):
+        self.messages = []
+        if system_prompt:
+            self.messages.append({"role": "system", "content": system_prompt})
+
+    def add_system_message(self, content):
+        self.messages.append({"role": "system", "content": content})
+
+    def add_user_message(self, content):
+        self.messages.append({"role": "user", "content": content})
+
+    def add_assistant_message(self, content):
+        self.messages.append({"role": "assistant", "content": content})
+
+    def remove_last_request(self):
+        self.messages.pop()
+        self.messages.pop()
+
+    def clear_messages(self):
+        self.messages = []
+
+    def get_last_message(self):
+        return self.messages[-1]["content"]
+
+    def get_messages(self):
+        return self.messages
+
+
+def chat(
+    client: OpenAI,
+    prompt: Union[str, list[dict[str, str]], Messages],
+    model: Literal["gpt-4", "gpt-4-1106-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"] = "gpt-3.5-turbo",
+) -> str:
+    if isinstance(prompt, str):
+        messages = [{"role": "user", "content": prompt}]
+    elif isinstance(prompt, Messages):
+        messages = prompt.add_user_message(prompt)
+    else:
+        messages = prompt
+    print(messages)
+    completion = client.chat.completions.create(model=model, messages=messages)
     response = completion.choices[0].message.content
+    if isinstance(prompt, Messages):
+        prompt.add_assistant_message(response)
     return response
 
 

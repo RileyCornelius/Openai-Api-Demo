@@ -4,12 +4,15 @@ from typing_extensions import Literal
 from openai_client import *
 from openai_vision import *
 from openai_assistant import *
+from openai_wrapper import OpenAIClient
 
 
 class UI:
     def __init__(self, assistant: Assistant, client: OpenAI):
         self.assistant = assistant
         self.openai = client
+        self.client = OpenAIClient(client)
+        self.messages = Messages()
         self.AVATARS = (
             None,
             "https://media.roboflow.com/spaces/openai-white-logomark.png",
@@ -239,16 +242,17 @@ class UI:
         return image_url
 
     def chatbot_response(self, prompt, chat_history, model):
-        response = chat(self.openai, prompt, model)
+        self.messages.add_user_message(prompt)
+        response = chat(self.openai, self.messages.messages, model)
+        self.messages.add_assistant_message(response)
         chat_history.append((prompt, response))
         return "", chat_history
 
     def chatbot_streaming_response(self, prompt, chat_history, model):
-        stream = chat_stream(self.openai, prompt, model)
+        stream_chuck = self.client.chat_streaming(prompt, model)
         chat_history.append([prompt, ""])
-        for chunk in stream:
-            text = chunk.choices[0].delta.content or ""
-            chat_history[-1][1] += text
+        for chunk in self.client.chat_stream_generator(stream_chuck):
+            chat_history[-1][1] += chunk
             yield "", chat_history
 
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
@@ -265,10 +269,13 @@ class UI:
             chat_history.append((prompt, message))
         return "", chat_history
 
-    def update_chatbot(self, chatbot_history):
-        _, chatbot = self.chatbot_response("hi", chatbot_history, "gpt-3.5-turbo")
+    # def update_chatbot(self, chatbot_history):
+    #     _, chatbot = self.chatbot_response("hi", chatbot_history, "gpt-3.5-turbo")
+    #     return chatbot
 
-        return chatbot
+    # def user_chat(self, prompt, chat_history):
+    #     chat_history.append([prompt, ""])
+    #     return "", chat_history
 
     # create and launch ui
 
@@ -303,5 +310,5 @@ class UI:
             #     show_progress=False, fn=self.update_chatbot, inputs=[self.chat_streaming_chatbot], outputs=[self.chat_streaming_chatbot], every=10
             # )
 
-            gradio.queue(max_size=5)
+            # gradio.queue(max_size=5)
             gradio.launch()
