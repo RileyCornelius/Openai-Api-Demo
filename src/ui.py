@@ -29,10 +29,21 @@ class UI:
         self.chat_streaming_clear_button = gr.ClearButton([self.chat_streaming_textbox, self.chat_streaming_chatbot])
 
     def chat_streaming_tab_callbacks(self):
+        # self.chat_streaming_textbox.submit(
+        #     fn=self.chatbot_streaming_response,
+        #     inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot, self.chat_streaming_model],
+        #     outputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
+        # )
+
         self.chat_streaming_textbox.submit(
-            fn=self.chatbot_streaming_response,
-            inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot, self.chat_streaming_model],
+            fn=self.user_chat,
+            inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
             outputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
+            queue=False,
+        ).then(
+            fn=self.chatbot_streaming_response,
+            inputs=[self.chat_streaming_chatbot, self.chat_streaming_model],
+            outputs=[self.chat_streaming_chatbot],
         )
 
     def chat_tab(self):
@@ -248,12 +259,19 @@ class UI:
         chat_history.append((prompt, response))
         return "", chat_history
 
-    def chatbot_streaming_response(self, prompt, chat_history, model):
+    # def chatbot_streaming_response(self, prompt, chat_history, model):
+    #     stream_chuck = self.client.chat_streaming(prompt, model)
+    #     chat_history.append([prompt, ""])
+    #     for chunk in self.client.chat_stream_generator(stream_chuck):
+    #         chat_history[-1][1] += chunk
+    #         yield "", chat_history
+
+    def chatbot_streaming_response(self, chat_history, model):
+        prompt = chat_history[-1][0]
         stream_chuck = self.client.chat_streaming(prompt, model)
-        chat_history.append([prompt, ""])
         for chunk in self.client.chat_stream_generator(stream_chuck):
             chat_history[-1][1] += chunk
-            yield "", chat_history
+            yield chat_history
 
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
         text = chat_history[-1][-1]
@@ -269,13 +287,13 @@ class UI:
             chat_history.append((prompt, message))
         return "", chat_history
 
+    def user_chat(self, prompt, chat_history):
+        chat_history.append([prompt, ""])
+        return "", chat_history
+
     # def update_chatbot(self, chatbot_history):
     #     _, chatbot = self.chatbot_response("hi", chatbot_history, "gpt-3.5-turbo")
     #     return chatbot
-
-    # def user_chat(self, prompt, chat_history):
-    #     chat_history.append([prompt, ""])
-    #     return "", chat_history
 
     # create and launch ui
 
