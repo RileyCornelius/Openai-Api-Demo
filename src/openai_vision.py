@@ -47,7 +47,7 @@ def compose_payload(image: np.ndarray, prompt: str) -> dict:
     }
 
 
-def chat_with_image(prompt: str, image: np.ndarray) -> str:
+def chat_with_image(client: OpenAI, prompt: str, image: np.ndarray) -> str:
     params = compose_payload(image, prompt)
     response = client.chat.completions.create(**params)
     response.choices[0].message.content
@@ -57,7 +57,7 @@ def chat_with_image(prompt: str, image: np.ndarray) -> str:
     return response.choices[0].message.content
 
 
-def chat_with_image_stream(prompt: str, image: np.ndarray):
+def chat_with_image_stream(client: OpenAI, prompt: str, image: np.ndarray):
     params = compose_payload(image, prompt)
     stream = client.chat.completions.create(**params, stream=True)
 

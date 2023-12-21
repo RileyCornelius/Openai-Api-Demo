@@ -1,8 +1,7 @@
-# gradio==4.4.0
-gradio==3.50.2 # 4.4.0 has a bug with streaming webcam
+# gradio==3.50.2
+gradio==4.10.0 # 4.11.0 webcam doesn't work
 openai==1.6.0
 python-dotenv==1.0.0
 typing_extensions==4.8.0
 numpy
 opencv-python
-requests

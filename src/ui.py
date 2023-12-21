@@ -9,9 +9,9 @@ from openai_assistant import *
 class UI:
     def __init__(self, assistant: Assistant, client: OpenAI):
         self.assistant = assistant
-        self.client = client
+        self.openai = client
         self.AVATARS = (
-            "https://media.roboflow.com/spaces/roboflow_raccoon_full.png",
+            None,
             "https://media.roboflow.com/spaces/openai-white-logomark.png",
         )
 
@@ -39,7 +39,7 @@ class UI:
             self.chat_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here", scale=3)
             self.chat_model = gr.Dropdown(choices=["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-1106-preview"], label="Model", value="gpt-3.5-turbo")
         with gr.Row():
-            self.chat_audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+            self.chat_audio_input = gr.Audio(label="Audio Input", sources=["microphone"], type="filepath")
             self.chat_audio_output = gr.Audio(label="Audio Output", autoplay=True)
         self.chat_clear_button = gr.ClearButton([self.chat_textbox, self.chat_chatbot])
 
@@ -67,12 +67,12 @@ class UI:
     def chat_with_vision_tab(self):
         gr.Markdown("# <center> Chat with Vision </center>")
         with gr.Row():
-            self.vision_webcam = gr.Image(source="webcam", streaming=True)  # Fix uploading flicker
+            self.vision_webcam = gr.Image(sources=["webcam"], streaming=True)  # Fix uploading flicker
             with gr.Column():
                 self.vision_chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=self.AVATARS)
                 self.vision_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here")
                 with gr.Row():
-                    self.vision_audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+                    self.vision_audio_input = gr.Audio(label="Audio Input", sources=["microphone"], type="filepath")
                     self.vision_audio_output = gr.Audio(label="Audio Output", autoplay=True)
                 self.vision_clear_button = gr.ClearButton([self.vision_textbox, self.vision_chatbot])
 
@@ -104,7 +104,7 @@ class UI:
             self.assistant_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here", scale=3)
             self.assistant_id = gr.Textbox(label="Assistant Id", value=self.assistant.assistant_id)
         with gr.Row():
-            self.assistant_audio_input = gr.Audio(label="Audio Input", source="microphone", type="filepath")
+            self.assistant_audio_input = gr.Audio(label="Audio Input", sources=["microphone"], type="filepath")
             self.assistant_audio_output = gr.Audio(label="Audio Output", autoplay=True)
         self.assistant_clear_button = gr.ClearButton([self.assistant_textbox, self.assistant_chatbot])
 
@@ -164,7 +164,7 @@ class UI:
             self.stt_model = gr.Dropdown(choices=["whisper-1"], label="Model", value="whisper-1")
             self.stt_response_type = gr.Dropdown(choices=["json", "text", "srt", "verbose_json", "vtt"], label="Response Type", value="text")
         with gr.Row():
-            self.stt_audio_input = gr.Audio(source="microphone", type="filepath")
+            self.stt_audio_input = gr.Audio(sources=["microphone"], type="filepath")
             self.stt_file = gr.UploadButton(file_types=[".mp3", ".wav"], label="Select File", type="filepath")
         self.stt_output_text = gr.Text(label="Output Text")
 
@@ -207,56 +207,53 @@ class UI:
     # ui specific functions
 
     def ui_speech_to_text(self, audio, model, response_type):
-        text = speech_to_text(self.client, audio, model, response_type)
+        text = speech_to_text(self.openai, audio, model, response_type)
         return text
 
     def ui_text_to_speech(self, text, model, voice, output_file_format, speed):
-        audio_path = text_to_speech(self.client, text, model, voice, output_file_format, speed)
+        audio_path = text_to_speech(self.openai, text, model, voice, output_file_format, speed)
         return audio_path
 
     def ui_respond_with_vision(self, image: np.ndarray, prompt: str, chat_history):
-        openai_key = self.client.api_key
         image = preprocess_image(image)
         image_path = cache_image(image)
-        response = chat_with_image(api_key=openai_key, image=image, prompt=prompt)
+        response = chat_with_image(self.openai, prompt, image)
         chat_history.append(((image_path, None), None))
         chat_history.append((prompt, response))
         return "", chat_history
 
     def ui_respond_with_vision_streaming(self, image: np.ndarray, prompt: str, chat_history):
-        openai_key = self.client.api_key
         image = preprocess_image(image)
         image_path = cache_image(image)
-        stream = chat_with_image_stream(prompt=prompt, image=image)
-        chat_history.append([f"<img src='/file={image_path}'><img> {prompt}", ""])
+        stream = chat_with_image_stream(self.openai, prompt, image)
+        # chat_history.append([f"# Markdown? <img src='/file={image_path}' /> {prompt}'", ""]) # markdown doesn't work..
+        chat_history.append([(image_path, None), None])
+        chat_history.append([prompt, ""])
         for chunk in stream:
-            chunk.choices[0].delta.content
-            if text := chunk.choices[0].delta.content:
-                chat_history[-1][1] += text
-                yield "", chat_history
-        return "", chat_history
+            text = chunk.choices[0].delta.content or ""
+            chat_history[-1][1] += text
+            yield "", chat_history
 
     def ui_generate_image(self, prompt, model, quality, size, style):
-        image_url = generate_image(self.client, prompt, model, quality, size, style)
+        image_url = generate_image(self.openai, prompt, model, quality, size, style)
         return image_url
 
     def chatbot_response(self, prompt, chat_history, model):
-        response = chat(self.client, prompt, model)
+        response = chat(self.openai, prompt, model)
         chat_history.append((prompt, response))
         return "", chat_history
 
     def chatbot_streaming_response(self, prompt, chat_history, model):
-        stream = chat_stream(self.client, prompt, model)
+        stream = chat_stream(self.openai, prompt, model)
         chat_history.append([prompt, ""])
         for chunk in stream:
-            if text := chunk.choices[0].delta.content:
-                chat_history[-1][1] += text
-                yield "", chat_history
-        return "", chat_history
+            text = chunk.choices[0].delta.content or ""
+            chat_history[-1][1] += text
+            yield "", chat_history
 
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
         text = chat_history[-1][-1]
-        audio = text_to_speech(self.client, text, model, voice, output_file_format, speed)
+        audio = text_to_speech(self.openai, text, model, voice, output_file_format, speed)
         return audio
 
     def chatbot_assistant_respond(self, prompt, chat_history, assistant_id):
@@ -306,5 +303,5 @@ class UI:
             #     show_progress=False, fn=self.update_chatbot, inputs=[self.chat_streaming_chatbot], outputs=[self.chat_streaming_chatbot], every=10
             # )
 
-            gradio.queue(concurrency_count=5)
+            gradio.queue(max_size=5)
             gradio.launch()
