@@ -102,6 +102,29 @@ class OpenAIClient:
             print(f"Text to speech error: {error}")
             return ""
 
+    def text_to_speech_streaming(
+        self,
+        text: str,
+        voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = "echo",
+        speed: float = 1.0,
+        model: Literal["tts-1", "tts-1-hd"] = "tts-1",
+        output_file_format: Literal["mp3", "opus", "aac", "flac", ""] = "mp3",
+    ):
+        try:
+            stream = self.client.audio.speech.create(
+                input=text,
+                model=model,
+                voice=voice,
+                response_format=output_file_format,
+                speed=speed,
+                stream=True,
+            )
+            return stream
+            # return stream.stream_to_file(AUDIO_FILE)
+        except Exception as error:
+            print(f"Text to speech error: {error}")
+            return ""
+
     def generate_image(
         self,
         prompt: str,

@@ -8,6 +8,7 @@
 3. Select `Venv`
 4. Select `Python 3.XX`
 5. Check `requirements.txt` and press OK
+6. `pip install git+https://github.com/openai/openai-python.git@b2b4239bc95a2c81d9db49416ec4095f8a72d5e2` to install speech streaming compatible version
 
 ### Openai API Key
 1. Rename `.env.example` to `.env`

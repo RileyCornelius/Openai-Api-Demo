@@ -1,3 +1,5 @@
+from queue import Queue
+from threading import Thread
 import gradio as gr
 from typing_extensions import Literal
 
@@ -5,6 +7,7 @@ from openai_client import *
 from openai_vision import *
 from openai_assistant import *
 from openai_wrapper import OpenAIClient
+from utils import *
 
 
 class UI:
@@ -41,10 +44,24 @@ class UI:
             outputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
             queue=False,
         ).then(
-            fn=self.chatbot_streaming_response,
+            fn=self.chatbot_streaming_chunking_response,
             inputs=[self.chat_streaming_chatbot, self.chat_streaming_model],
             outputs=[self.chat_streaming_chatbot],
         )
+
+        # self.chat_streaming_textbox.submit(
+        #     fn=self.user_chat,
+        #     inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
+        #     outputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
+        #     queue=False,
+        # ).then(
+        #     fn=self.chatbot_streaming_response,
+        #     inputs=[self.chat_streaming_chatbot, self.chat_streaming_model],
+        #     outputs=[self.chat_streaming_chatbot],
+        # ).then(
+        #     fn=self.async_text_to_speech,
+        #     inputs=[self.chat_streaming_chatbot, self.tts_model, self.tts_voice, self.tts_output_file_format, self.tts_speed],
+        # )
 
     def chat_tab(self):
         gr.Markdown("# <center> Chat </center>")
@@ -266,12 +283,29 @@ class UI:
     #         chat_history[-1][1] += chunk
     #         yield "", chat_history
 
-    def chatbot_streaming_response(self, chat_history, model):
+    def chatbot_streaming_chunking_response(self, chat_history, model):
+        queue = AudioQueue(is_streaming=True)
+        audio_thread = Thread(target=stream_sentences, args=(queue,), daemon=True)
+        sentence_thread = Thread(target=generate_sentences, args=(queue, self.client), daemon=True)
+        audio_thread.start()
+        sentence_thread.start()
+
         prompt = chat_history[-1][0]
-        stream_chuck = self.client.chat_streaming(prompt, model)
-        for chunk in self.client.chat_stream_generator(stream_chuck):
+        stream = self.client.chat_streaming(prompt, model)
+        for chunk in self.client.chat_stream_generator(stream):
             chat_history[-1][1] += chunk
+            queue.text.put(chunk)
             yield chat_history
+
+        queue.is_streaming = False
+        sentence_thread.join()
+        audio_thread.join()
+
+    def async_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
+        text = chat_history[-1][-1]
+        # sentences = split_into_sentences(text)
+        audio_stream = self.client.text_to_speech_streaming(text)
+        stream_audio(audio_stream.iter_bytes())
 
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
         text = chat_history[-1][-1]
