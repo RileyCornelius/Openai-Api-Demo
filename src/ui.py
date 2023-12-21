@@ -23,12 +23,9 @@ class UI:
             self.chat_streaming_model = gr.Dropdown(
                 choices=["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-1106-preview"], label="Model", value="gpt-3.5-turbo"
             )
-        self.chat_streaming_button = gr.Button(value="Send", type="submit")
         self.chat_streaming_clear_button = gr.ClearButton([self.chat_streaming_textbox, self.chat_streaming_chatbot])
 
     def chat_streaming_tab_callbacks(self):
-        self.chat_streaming_button.click(fn=test)
-
         self.chat_streaming_textbox.submit(
             fn=self.chatbot_streaming_response,
             inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot, self.chat_streaming_model],
@@ -81,7 +78,7 @@ class UI:
 
     def chat_with_vision_tab_callbacks(self):
         self.vision_textbox.submit(
-            fn=self.ui_respond_with_vision,
+            fn=self.ui_respond_with_vision_streaming,
             inputs=[self.vision_webcam, self.vision_textbox, self.vision_chatbot],
             outputs=[self.vision_textbox, self.vision_chatbot],
         )
@@ -91,7 +88,7 @@ class UI:
             inputs=[self.vision_audio_input, self.stt_model, self.stt_response_type],
             outputs=[self.vision_textbox],
         ).then(
-            fn=self.ui_respond_with_vision,
+            fn=self.ui_respond_with_vision_streaming,
             inputs=[self.vision_webcam, self.vision_textbox, self.vision_chatbot],
             outputs=[self.vision_textbox, self.vision_chatbot],
         ).then(
@@ -219,11 +216,24 @@ class UI:
 
     def ui_respond_with_vision(self, image: np.ndarray, prompt: str, chat_history):
         openai_key = self.client.api_key
-        image = preprocess_image(image=image)
+        image = preprocess_image(image)
         image_path = cache_image(image)
-        response = prompt_image(api_key=openai_key, image=image, prompt=prompt)
+        response = chat_with_image(api_key=openai_key, image=image, prompt=prompt)
         chat_history.append(((image_path, None), None))
         chat_history.append((prompt, response))
+        return "", chat_history
+
+    def ui_respond_with_vision_streaming(self, image: np.ndarray, prompt: str, chat_history):
+        openai_key = self.client.api_key
+        image = preprocess_image(image)
+        image_path = cache_image(image)
+        stream = chat_with_image_stream(prompt=prompt, image=image)
+        chat_history.append([f"<img src='/file={image_path}'><img> {prompt}", ""])
+        for chunk in stream:
+            chunk.choices[0].delta.content
+            if text := chunk.choices[0].delta.content:
+                chat_history[-1][1] += text
+                yield "", chat_history
         return "", chat_history
 
     def ui_generate_image(self, prompt, model, quality, size, style):
@@ -239,10 +249,10 @@ class UI:
         stream = chat_stream(self.client, prompt, model)
         chat_history.append([prompt, ""])
         for chunk in stream:
-            # text = chunk.choices[0].delta.content
             if text := chunk.choices[0].delta.content:
                 chat_history[-1][1] += text
                 yield "", chat_history
+        return "", chat_history
 
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
         text = chat_history[-1][-1]

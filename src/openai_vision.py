@@ -6,6 +6,11 @@ import numpy as np
 from typing_extensions import Literal
 from openai import OpenAI
 from utils import *
+from dotenv import load_dotenv
+
+load_dotenv()
+
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 def preprocess_image(image: np.ndarray) -> np.ndarray:
@@ -42,12 +47,20 @@ def compose_payload(image: np.ndarray, prompt: str) -> dict:
     }
 
 
-def prompt_image(api_key: str, image: np.ndarray, prompt: str) -> str:
-    api_url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    payload = compose_payload(image=image, prompt=prompt)
-    response = requests.post(url=api_url, headers=headers, json=payload).json()
+def chat_with_image(prompt: str, image: np.ndarray) -> str:
+    params = compose_payload(image, prompt)
+    response = client.chat.completions.create(**params)
+    response.choices[0].message.content
 
     if "error" in response:
         raise ValueError(response["error"]["message"])
-    return response["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
+
+
+def chat_with_image_stream(prompt: str, image: np.ndarray):
+    params = compose_payload(image, prompt)
+    stream = client.chat.completions.create(**params, stream=True)
+
+    if stream.response.is_error:
+        raise ValueError(stream.response.status_code, stream.response.reason_phrase)
+    return stream
