@@ -15,6 +15,26 @@ class UI:
             "https://media.roboflow.com/spaces/openai-white-logomark.png",
         )
 
+    def chat_streaming_tab(self):
+        gr.Markdown("# <center> Chat Streaming</center>")
+        self.chat_streaming_chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=self.AVATARS)
+        with gr.Row():
+            self.chat_streaming_textbox = gr.Textbox(label="Chatbox", placeholder="Type your message here", scale=3)
+            self.chat_streaming_model = gr.Dropdown(
+                choices=["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4", "gpt-4-1106-preview"], label="Model", value="gpt-3.5-turbo"
+            )
+        self.chat_streaming_button = gr.Button(value="Send", type="submit")
+        self.chat_streaming_clear_button = gr.ClearButton([self.chat_streaming_textbox, self.chat_streaming_chatbot])
+
+    def chat_streaming_tab_callbacks(self):
+        self.chat_streaming_button.click(fn=test)
+
+        self.chat_streaming_textbox.submit(
+            fn=self.chatbot_streaming_response,
+            inputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot, self.chat_streaming_model],
+            outputs=[self.chat_streaming_textbox, self.chat_streaming_chatbot],
+        )
+
     def chat_tab(self):
         gr.Markdown("# <center> Chat </center>")
         self.chat_chatbot = gr.Chatbot(height=500, bubble_full_width=False, avatar_images=self.AVATARS)
@@ -215,6 +235,15 @@ class UI:
         chat_history.append((prompt, response))
         return "", chat_history
 
+    def chatbot_streaming_response(self, prompt, chat_history, model):
+        stream = chat_stream(self.client, prompt, model)
+        chat_history.append([prompt, ""])
+        for chunk in stream:
+            # text = chunk.choices[0].delta.content
+            if text := chunk.choices[0].delta.content:
+                chat_history[-1][1] += text
+                yield "", chat_history
+
     def chatbot_text_to_speech(self, chat_history, model, voice, output_file_format, speed):
         text = chat_history[-1][-1]
         audio = text_to_speech(self.client, text, model, voice, output_file_format, speed)
@@ -229,10 +258,17 @@ class UI:
             chat_history.append((prompt, message))
         return "", chat_history
 
+    def update_chatbot(self, chatbot_history):
+        _, chatbot = self.chatbot_response("hi", chatbot_history, "gpt-3.5-turbo")
+
+        return chatbot
+
     # create and launch ui
 
     def launch(self):
         with gr.Blocks() as gradio:
+            with gr.Tab(label="Chat Streaming"):
+                self.chat_streaming_tab()
             with gr.Tab(label="Chat"):
                 self.chat_tab()
             with gr.Tab(label="Chat with Vision"):
@@ -246,6 +282,7 @@ class UI:
             with gr.Tab(label="Image Generation"):
                 self.image_generation_tab()
 
+            self.chat_streaming_tab_callbacks()
             self.chat_tab_callbacks()
             self.chat_with_vision_tab_callbacks()
             self.assistant_tab_callbacks()
@@ -253,4 +290,11 @@ class UI:
             self.speech_to_text_tab_callbacks()
             self.image_generation_tab_callbacks()
 
-        gradio.launch()
+            # self.chat_chatbot.change(fn=self.append_chatbot, inputs=[self.chat_chatbot], outputs=[self.chat_chatbot], every=2)
+            # gradio.queue()
+            # loaded = gradio.load(
+            #     show_progress=False, fn=self.update_chatbot, inputs=[self.chat_streaming_chatbot], outputs=[self.chat_streaming_chatbot], every=10
+            # )
+
+            gradio.queue(concurrency_count=5)
+            gradio.launch()
